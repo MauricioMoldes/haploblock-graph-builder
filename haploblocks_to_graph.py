@@ -6,7 +6,7 @@ import csv
 import itertools
 from collections import defaultdict
 
-ROOT = "/ngc/projects2/gm/people/mauqua/haploblocks/results"
+ROOT = "/mnt/mauricio/haploblock-graph-builder/data"
 
 ############################################
 # collapse haplotypes → individual
@@ -27,6 +27,8 @@ def find_blocks():
 
     for chr_dir in sorted(glob.glob(f"{ROOT}/chr*")):
 
+        chr_name = os.path.basename(chr_dir)
+
         indiv_files = glob.glob(f"{chr_dir}/individual_hashes_*.tsv")
 
         for f in indiv_files:
@@ -37,7 +39,7 @@ def find_blocks():
 
             if os.path.exists(cluster_file):
 
-                blocks.append((region,f,cluster_file))
+                blocks.append((chr_name, region, f, cluster_file))
 
     return blocks
 
@@ -70,7 +72,7 @@ def load_clusters(cluster_file):
 # parse individuals
 ############################################
 
-def parse_block(indiv_file, cluster_map, block_id):
+def parse_block(indiv_file, cluster_map, chr_name, region):
 
     individual_clusters = defaultdict(set)
 
@@ -88,11 +90,12 @@ def parse_block(indiv_file, cluster_map, block_id):
 
             if cluster_id:
 
-                node = f"{block_id}_cluster{cluster_id}"
+                node = f"{chr_name}_{region}_cluster{cluster_id}"
 
                 individual_clusters[individual].add(node)
 
     return individual_clusters
+
 
 
 ############################################
@@ -105,7 +108,7 @@ def main():
 
     blocks = find_blocks()
 
-    print("blocks found:",len(blocks))
+    print("blocks found:", len(blocks))
 
     individual_clusters = defaultdict(set)
 
@@ -113,15 +116,15 @@ def main():
     # aggregate across genome
     ############################################
 
-    for region, indiv_file, cluster_file in blocks:
+    for chr_name, region, indiv_file, cluster_file in blocks:
 
-        print("processing",region)
+        print("processing", chr_name, region)
 
         cluster_map = load_clusters(cluster_file)
 
-        block_data = parse_block(indiv_file,cluster_map,region)
+        block_data = parse_block(indiv_file, cluster_map, chr_name, region)
 
-        for ind,nodes in block_data.items():
+        for ind, nodes in block_data.items():
 
             individual_clusters[ind].update(nodes)
 
@@ -163,7 +166,7 @@ def main():
 
                 vec.append(1 if node in individual_clusters[ind] else 0)
 
-            writer.writerow([node,block] + vec)
+            writer.writerow([node, block] + vec)
 
     ############################################
     # build edges
@@ -173,11 +176,11 @@ def main():
 
     edges = set()
 
-    for ind,nodes in individual_clusters.items():
+    for ind, nodes in individual_clusters.items():
 
-        for a,b in itertools.combinations(sorted(nodes),2):
+        for a, b in itertools.combinations(sorted(nodes), 2):
 
-            edges.add((a,b))
+            edges.add((a, b))
 
     ############################################
     # write edges.csv
@@ -195,7 +198,6 @@ def main():
 
     print("done")
 
-
-if __name__ == "__main__":
+if name == “main”:
 
     main()
