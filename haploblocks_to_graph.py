@@ -6,7 +6,15 @@ import csv
 import itertools
 from collections import defaultdict
 
-ROOT = "/mnt/mauricio/haploblock-graph-builder/data"
+ROOT = os.getenv("HAPLOBLOCK_ROOT", "/data")
+OUTPUT = os.getenv("OUTPUT_DIR", "/results")
+
+os.makedirs(OUTPUT, exist_ok=True)
+
+nodes_path = os.path.join(OUTPUT, "nodes.csv")
+edges_path = os.path.join(OUTPUT, "edges.csv")
+
+
 
 ############################################
 # collapse haplotypes → individual
@@ -148,7 +156,7 @@ def main():
     # write nodes.csv
     ############################################
 
-    with open("nodes.csv","w") as f:
+    with open("nodes_path.csv","w") as f:
 
         writer = csv.writer(f)
 
@@ -186,7 +194,7 @@ def main():
     # write edges.csv
     ############################################
 
-    with open("edges.csv","w") as f:
+    with open("edges_path.csv","w") as f:
 
         writer = csv.writer(f)
 
@@ -198,6 +206,9 @@ def main():
 
     print("done")
 
-if name == “main”:
+############################################
+# entry point
+############################################
 
+if __name__ == "__main__":
     main()
