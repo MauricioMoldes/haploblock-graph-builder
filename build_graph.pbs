@@ -1,0 +1,26 @@
+#!/bin/bash
+#PBS -N haploblock_graph
+#PBS -l select=1:ncpus=200:mem=2000gb
+#PBS -l walltime=72:00:00
+#PBS -o logs/haploblock_graph.out
+#PBS -e logs/haploblock_graph.err
+#PBS -j oe
+
+cd /ngc/projects2/gm/people/mauqua/haploblocks
+
+export NPROC=$PBS_NCPUS
+export APPTAINER_TMPDIR=/tmp
+export OUTPUT_DIR=/output 
+
+echo "Starting job"
+date
+
+apptainer exec \
+-B /ngc/projects2/gm/people/mauqua/haploblocks/tmp:/tmp \
+-B /ngc/projects2/gm/people/mauqua/haploblocks/results:/data \
+-B /ngc/projects2/gm/people/mauqua/haploblocks/graph_output:/output \
+./haploblock_graph.sif \
+python /app/haploblocks_to_graph.py
+
+echo "Job finished"
+date

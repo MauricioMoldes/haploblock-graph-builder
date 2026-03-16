@@ -9,7 +9,7 @@ from collections import defaultdict
 
 ROOT = os.getenv("HAPLOBLOCK_ROOT", "/data")
 OUTPUT = os.getenv("OUTPUT_DIR", "/results")
-NPROC = int(os.getenv("NPROC", cpu_count()))
+NPROC = int(os.getenv("NPROC") or cpu_count())
 
 TMP = os.getenv("TMPDIR", "/tmp")
 TMP = os.path.join(TMP, "haploblock_graph")
