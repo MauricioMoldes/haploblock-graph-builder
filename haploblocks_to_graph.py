@@ -4,29 +4,29 @@ import os
 import glob
 import csv
 import itertools
+from multiprocessing import Pool, cpu_count
 from collections import defaultdict
 
 ROOT = os.getenv("HAPLOBLOCK_ROOT", "/data")
 OUTPUT = os.getenv("OUTPUT_DIR", "/results")
+NPROC = int(os.getenv("NPROC", cpu_count()))
+
+TMP = os.getenv("TMPDIR", "/tmp")
+TMP = os.path.join(TMP, "haploblock_graph")
 
 os.makedirs(OUTPUT, exist_ok=True)
-
-nodes_path = os.path.join(OUTPUT, "nodes.csv")
-edges_path = os.path.join(OUTPUT, "edges.csv")
-
-
+os.makedirs(TMP, exist_ok=True)
 
 ############################################
-# collapse haplotypes → individual
+# sample → individual
 ############################################
 
 def extract_individual(sample):
-
     return sample.split("_")[0]
 
 
 ############################################
-# find all haploblock files
+# find haploblocks
 ############################################
 
 def find_blocks():
@@ -53,7 +53,7 @@ def find_blocks():
 
 
 ############################################
-# load cluster map
+# load cluster mapping
 ############################################
 
 def load_clusters(cluster_file):
@@ -77,14 +77,20 @@ def load_clusters(cluster_file):
 
 
 ############################################
-# parse individuals
+# process block (parallel)
 ############################################
 
-def parse_block(indiv_file, cluster_map, chr_name, region):
+def process_block(args):
 
-    individual_clusters = defaultdict(set)
+    chr_name, region, indiv_file, cluster_file = args
 
-    with open(indiv_file) as f:
+    cluster_map = load_clusters(cluster_file)
+
+    out_file = os.path.join(TMP, f"{chr_name}_{region}.tsv")
+
+    with open(indiv_file) as f, open(out_file, "w") as out:
+
+        writer = csv.writer(out, delimiter="\t")
 
         for line in f:
 
@@ -100,10 +106,82 @@ def parse_block(indiv_file, cluster_map, chr_name, region):
 
                 node = f"{chr_name}_{region}_cluster{cluster_id}"
 
-                individual_clusters[individual].add(node)
+                writer.writerow([individual, node])
 
-    return individual_clusters
+    return out_file
 
+
+############################################
+# merge nodes
+############################################
+
+def merge_nodes(block_files):
+
+    individual_nodes = defaultdict(set)
+    node_to_inds = defaultdict(set)
+
+    for f in block_files:
+
+        with open(f) as fh:
+
+            for ind, node in csv.reader(fh, delimiter="\t"):
+
+                individual_nodes[ind].add(node)
+                node_to_inds[node].add(ind)
+
+    individuals = sorted(individual_nodes.keys())
+    nodes = sorted(node_to_inds.keys())
+
+    nodes_path = os.path.join(OUTPUT, "nodes.csv")
+
+    with open(nodes_path, "w") as out:
+
+        writer = csv.writer(out)
+
+        writer.writerow(["id","high_dim_edge"] + individuals)
+
+        for node in nodes:
+
+            block = node.split("_cluster")[0]
+
+            inds = node_to_inds[node]
+
+            row = [node, block]
+
+            row.extend(1 if i in inds else 0 for i in individuals)
+
+            writer.writerow(row)
+
+    return individual_nodes
+
+
+############################################
+# build edges (original logic)
+############################################
+
+def build_edges(individual_nodes):
+
+    edges = set()
+
+    for nodes in individual_nodes.values():
+
+        nodes = sorted(nodes)
+
+        for a, b in itertools.combinations(nodes, 2):
+
+            edges.add((a,b))
+
+    edges_path = os.path.join(OUTPUT, "edges.csv")
+
+    with open(edges_path,"w") as out:
+
+        writer = csv.writer(out)
+
+        writer.writerow(["source","target"])
+
+        for a,b in sorted(edges):
+
+            writer.writerow([a,b])
 
 
 ############################################
@@ -116,98 +194,37 @@ def main():
 
     blocks = find_blocks()
 
-    print("blocks found:", len(blocks))
+    print("Blocks found:", len(blocks))
 
-    individual_clusters = defaultdict(set)
+    ########################################
+    # parallel parsing
+    ########################################
 
-    ############################################
-    # aggregate across genome
-    ############################################
+    print("Processing with", NPROC, "CPUs")
 
-    for chr_name, region, indiv_file, cluster_file in blocks:
+    with Pool(NPROC) as pool:
 
-        print("processing", chr_name, region)
+        block_files = pool.map(process_block, blocks)
 
-        cluster_map = load_clusters(cluster_file)
+    ########################################
+    # merge nodes
+    ########################################
 
-        block_data = parse_block(indiv_file, cluster_map, chr_name, region)
+    print("Merging node data")
 
-        for ind, nodes in block_data.items():
+    individual_nodes = merge_nodes(block_files)
 
-            individual_clusters[ind].update(nodes)
-
-    ############################################
-    # build node list
-    ############################################
-
-    print("building node table")
-
-    individuals = sorted(individual_clusters.keys())
-
-    all_nodes = set()
-
-    for nodes in individual_clusters.values():
-
-        all_nodes.update(nodes)
-
-    all_nodes = sorted(all_nodes)
-
-    ############################################
-    # write nodes.csv
-    ############################################
-
-    with open("nodes_path.csv","w") as f:
-
-        writer = csv.writer(f)
-
-        header = ["id","high_dim_edge"] + individuals
-
-        writer.writerow(header)
-
-        for node in all_nodes:
-
-            block = node.split("_cluster")[0]
-
-            vec = []
-
-            for ind in individuals:
-
-                vec.append(1 if node in individual_clusters[ind] else 0)
-
-            writer.writerow([node, block] + vec)
-
-    ############################################
+    ########################################
     # build edges
-    ############################################
+    ########################################
 
-    print("building edges")
+    print("Generating edges")
 
-    edges = set()
+    build_edges(individual_nodes)
 
-    for ind, nodes in individual_clusters.items():
+    print("Done.")
 
-        for a, b in itertools.combinations(sorted(nodes), 2):
 
-            edges.add((a, b))
-
-    ############################################
-    # write edges.csv
-    ############################################
-
-    with open("edges_path.csv","w") as f:
-
-        writer = csv.writer(f)
-
-        writer.writerow(["source","target"])
-
-        for e in edges:
-
-            writer.writerow(e)
-
-    print("done")
-
-############################################
-# entry point
 ############################################
 
 if __name__ == "__main__":
