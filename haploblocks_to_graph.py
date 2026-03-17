@@ -154,34 +154,85 @@ def merge_nodes(block_files):
 
     return individual_nodes
 
+############################################
+# build weighted edges (parallel, disk-based)
+############################################
 
-############################################
-# build edges (original logic)
-############################################
+def process_edge_chunk(args):
+
+    chunk_id, individuals, individual_nodes = args
+
+    edge_counts = defaultdict(int)
+
+    for ind in individuals:
+        nodes = sorted(individual_nodes[ind])
+
+        for a, b in itertools.combinations(nodes, 2):
+            edge_counts[(a, b)] += 1
+
+    out_file = os.path.join(TMP, f"edges_part_{chunk_id}.tsv")
+
+    with open(out_file, "w") as out:
+        for (a, b), count in edge_counts.items():
+            out.write(f"{a}\t{b}\t{count}\n")
+
+    return out_file
+
 
 def build_edges(individual_nodes):
 
-    edges = set()
+    print("Building weighted edges in parallel...")
 
-    for nodes in individual_nodes.values():
+    individuals = list(individual_nodes.keys())
 
-        nodes = sorted(nodes)
+    # Split individuals into chunks
+    chunk_size = max(1, len(individuals) // NPROC)
 
-        for a, b in itertools.combinations(nodes, 2):
+    chunks = [
+        individuals[i:i + chunk_size]
+        for i in range(0, len(individuals), chunk_size)
+    ]
 
-            edges.add((a,b))
+    args = [
+        (i, chunk, individual_nodes)
+        for i, chunk in enumerate(chunks)
+    ]
+
+    ########################################
+    # Parallel edge generation
+    ########################################
+
+    with Pool(NPROC) as pool:
+        part_files = pool.map(process_edge_chunk, args)
+
+    ########################################
+    # Merge partial edge files
+    ########################################
+
+    print("Merging edge files...")
+
+    global_counts = defaultdict(int)
+
+    for pf in part_files:
+        with open(pf) as f:
+            for line in f:
+                a, b, count = line.strip().split("\t")
+                global_counts[(a, b)] += int(count)
+
+    ########################################
+    # Write final edges.csv
+    ########################################
 
     edges_path = os.path.join(OUTPUT, "edges.csv")
 
-    with open(edges_path,"w") as out:
+    print("Writing final edges...")
 
+    with open(edges_path, "w") as out:
         writer = csv.writer(out)
+        writer.writerow(["source", "target", "weight"])
 
-        writer.writerow(["source","target"])
-
-        for a,b in sorted(edges):
-
-            writer.writerow([a,b])
+        for (a, b), count in global_counts.items():
+            writer.writerow([a, b, count])
 
 
 ############################################
