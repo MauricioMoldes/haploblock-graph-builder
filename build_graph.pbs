@@ -5,22 +5,19 @@
 #PBS -o logs/haploblock_graph.out
 #PBS -e logs/haploblock_graph.err
 #PBS -j oe
-
 cd /ngc/projects2/gm/people/mauqua/haploblocks
-
 export NPROC=$PBS_NCPUS
+export TMPDIR=/tmp
 export APPTAINER_TMPDIR=/tmp
-export OUTPUT_DIR=/output 
-
+export OUTPUT_DIR=/output
 echo "Starting job"
 date
-
 apptainer exec \
 -B /ngc/projects2/gm/people/mauqua/haploblocks/tmp:/tmp \
 -B /ngc/projects2/gm/people/mauqua/haploblocks/results:/data \
 -B /ngc/projects2/gm/people/mauqua/haploblocks/graph_output:/output \
 ./haploblock_graph.sif \
 python /app/haploblocks_to_graph.py
-
 echo "Job finished"
 date
+

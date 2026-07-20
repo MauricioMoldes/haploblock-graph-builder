@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
-
 import os
+import re
 import glob
 import csv
 import itertools
@@ -17,8 +16,11 @@ TMP = os.path.join(TMP, "haploblock_graph")
 os.makedirs(OUTPUT, exist_ok=True)
 os.makedirs(TMP, exist_ok=True)
 
+# chr1_99874387-100330740_cluster.tsv -> ("chr1", "99874387-100330740")
+BLOCK_FILENAME_RE = re.compile(r"^(chr[0-9XYM]+)_(\d+-\d+)_cluster\.tsv$")
+
 ############################################
-# sample → individual
+# sample_hap → individual
 ############################################
 
 def extract_individual(sample):
@@ -33,80 +35,73 @@ def find_blocks():
 
     blocks = []
 
-    for chr_dir in sorted(glob.glob(f"{ROOT}/chr*")):
+    for f in sorted(glob.glob(f"{ROOT}/chr*/clusters/*_cluster.tsv")):
 
-        chr_name = os.path.basename(chr_dir)
+        fname = os.path.basename(f)
 
-        indiv_files = glob.glob(f"{chr_dir}/individual_hashes_*.tsv")
+        m = BLOCK_FILENAME_RE.match(fname)
 
-        for f in indiv_files:
+        if not m:
+            continue
 
-            region = f.split("individual_hashes_")[1].replace(".tsv","")
+        chr_name, region = m.group(1), m.group(2)
 
-            cluster_file = f"{chr_dir}/cluster_hashes_{region}.tsv"
-
-            if os.path.exists(cluster_file):
-
-                blocks.append((chr_name, region, f, cluster_file))
+        blocks.append((chr_name, region, f))
 
     return blocks
 
 
 ############################################
-# load cluster mapping
+# process block (parallel)
 ############################################
+#
+# Input is an MMseqs2 "createtsv" style cluster file:
+#   representative_member    cluster_member
+# with the representative repeated once per member of its cluster.
+# We assign a stable numeric cluster id per representative (sorted,
+# so re-runs are deterministic) and emit individual -> node rows.
 
-def load_clusters(cluster_file):
+def process_block(args):
 
-    mapping = {}
+    chr_name, region, cluster_file = args
+
+    out_file = os.path.join(TMP, f"{chr_name}_{region}.tsv")
+
+    representatives = set()
+    rows = []
 
     with open(cluster_file) as f:
 
         for line in f:
 
-            parts = line.strip().split()
+            parts = line.split()
 
             if len(parts) != 2:
                 continue
 
-            cluster_id, hash_val = parts
+            representative, member = parts
 
-            mapping[hash_val] = cluster_id
+            representatives.add(representative)
+            rows.append((representative, member))
 
-    return mapping
+    cluster_id_map = {
+        rep: cluster_id
+        for cluster_id, rep in enumerate(sorted(representatives), start=1)
+    }
 
-
-############################################
-# process block (parallel)
-############################################
-
-def process_block(args):
-
-    chr_name, region, indiv_file, cluster_file = args
-
-    cluster_map = load_clusters(cluster_file)
-
-    out_file = os.path.join(TMP, f"{chr_name}_{region}.tsv")
-
-    with open(indiv_file) as f, open(out_file, "w") as out:
+    with open(out_file, "w") as out:
 
         writer = csv.writer(out, delimiter="\t")
 
-        for line in f:
+        for representative, member in rows:
 
-            sample, hash_string = line.strip().split()
+            individual = extract_individual(member)
 
-            individual = extract_individual(sample)
+            cluster_id = cluster_id_map[representative]
 
-            cluster_hash = hash_string[-20:]
+            node = f"{chr_name}_{region}_cluster{cluster_id}"
 
-            cluster_id = cluster_map.get(cluster_hash)
-
-            if cluster_id:
-
-                node = f"{chr_name}_{region}_cluster{cluster_id}"
-
-                writer.writerow([individual, node])
+            writer.writerow([individual, node])
 
     return out_file
 
@@ -160,14 +155,15 @@ def merge_nodes(block_files):
 
 def process_edge_chunk(args):
 
-    chunk_id, individuals, individual_nodes = args
+    # `chunk_nodes` is a dict containing ONLY the individuals this worker
+    # needs (individual -> set of nodes), not the full population dict.
+    chunk_id, chunk_nodes = args
 
     edge_counts = defaultdict(int)
 
-    for ind in individuals:
-        nodes = sorted(individual_nodes[ind])
+    for nodes in chunk_nodes.values():
 
-        for a, b in itertools.combinations(nodes, 2):
+        for a, b in itertools.combinations(sorted(nodes), 2):
             edge_counts[(a, b)] += 1
 
     out_file = os.path.join(TMP, f"edges_part_{chunk_id}.tsv")
@@ -194,7 +190,7 @@ def build_edges(individual_nodes):
     ]
 
     args = [
-        (i, chunk, individual_nodes)
+        (i, {ind: individual_nodes[ind] for ind in chunk})
         for i, chunk in enumerate(chunks)
     ]
 
@@ -280,3 +276,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
