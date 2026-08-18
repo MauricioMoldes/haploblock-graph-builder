@@ -10,6 +10,15 @@ ROOT = os.getenv("HAPLOBLOCK_ROOT", "/data")
 OUTPUT = os.getenv("OUTPUT_DIR", "/results")
 NPROC = int(os.getenv("NPROC") or cpu_count())
 
+# Minimum number of individuals that must carry a cluster for it to be
+# eligible for edge generation. Clusters below this are almost always
+# MMseqs2 singleton clusters (private to one haplotype) — they can
+# never produce an edge with weight > 1, contribute no population-level
+# co-occurrence signal, and are the dominant term in the combinatorial
+# blowup (most of an individual's nodes are private/rare clusters).
+# Does NOT affect nodes.csv, which still reports the full feature matrix.
+MIN_CLUSTER_SUPPORT = int(os.getenv("MIN_CLUSTER_SUPPORT", "2"))
+
 TMP = os.getenv("TMPDIR", "/tmp")
 TMP = os.path.join(TMP, "haploblock_graph")
 
@@ -147,7 +156,39 @@ def merge_nodes(block_files):
 
             writer.writerow(row)
 
-    return individual_nodes
+    return individual_nodes, node_to_inds
+
+
+############################################
+# filter low-support nodes before edge generation
+############################################
+#
+# nodes.csv (already written) keeps the full feature matrix untouched.
+# This only affects what goes into build_edges: nodes carried by fewer
+# than MIN_CLUSTER_SUPPORT individuals are dropped from each
+# individual's node set, since they can never form a co-occurrence
+# edge with weight > 1 and dominate the pairwise combination count.
+
+def filter_low_support_nodes(individual_nodes, node_to_inds, min_support):
+
+    keep = {node for node, inds in node_to_inds.items() if len(inds) >= min_support}
+
+    total_nodes = len(node_to_inds)
+    kept_nodes = len(keep)
+
+    print(
+        f"Node support filter (min_support={min_support}): "
+        f"keeping {kept_nodes}/{total_nodes} nodes "
+        f"({total_nodes - kept_nodes} dropped)"
+    )
+
+    filtered = {
+        ind: (nodes & keep)
+        for ind, nodes in individual_nodes.items()
+    }
+
+    return filtered
+
 
 ############################################
 # build weighted edges (parallel, disk-based)
@@ -259,7 +300,15 @@ def main():
 
     print("Merging node data")
 
-    individual_nodes = merge_nodes(block_files)
+    individual_nodes, node_to_inds = merge_nodes(block_files)
+
+    ########################################
+    # filter low-support nodes (see filter_low_support_nodes docstring)
+    ########################################
+
+    individual_nodes_for_edges = filter_low_support_nodes(
+        individual_nodes, node_to_inds, MIN_CLUSTER_SUPPORT
+    )
 
     ########################################
     # build edges
@@ -267,7 +316,7 @@ def main():
 
     print("Generating edges")
 
-    build_edges(individual_nodes)
+    build_edges(individual_nodes_for_edges)
 
     print("Done.")
 
@@ -276,4 +325,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
