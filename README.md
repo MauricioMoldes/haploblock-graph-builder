@@ -1,5 +1,7 @@
 # haploblock-graph-builder
 
+![Haploblock co-occurrence graph](https://haploblocks.org/figures/haploblock_co_occurence_graph.png)
+
 Builds a **haploblock cluster co-occurrence graph** from MMseqs2 haploblock
 clustering results.
 
