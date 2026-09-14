@@ -1,0 +1,16 @@
+#!/bin/bash
+#PBS -N toolkit_full16
+#PBS -l select=1:ncpus=8:mem=64gb
+#PBS -l walltime=72:00:00
+#PBS -o logs/toolkit_full16.out
+#PBS -e logs/toolkit_full16.err
+#PBS -j oe
+#PBS -W group_list=external-rh_rh_gm
+cd /ngc/projects2/gm/people/mauqua/haploblocks
+echo "Starting lift/heatmap/island toolkit on the 16 remaining chromosomes"
+date
+bash run_toolkit_full16.sh \
+    /ngc/projects2/gm/people/mauqua/haploblocks/graph_output_full/by_chromosome \
+    5 3
+echo "Done"
+date

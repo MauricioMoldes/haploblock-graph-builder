@@ -1,0 +1,17 @@
+#!/bin/bash
+#PBS -N compress_distribution
+#PBS -l select=1:ncpus=32:mem=32gb
+#PBS -l walltime=24:00:00
+#PBS -o logs/compress_distribution.out
+#PBS -e logs/compress_distribution.err
+#PBS -j oe
+#PBS -W group_list=external-rh_rh_gm
+cd /ngc/projects2/gm/people/mauqua/haploblocks
+echo "Starting compression/staging for distribution"
+date
+bash compress_for_distribution.sh \
+    /ngc/projects2/gm/people/mauqua/haploblocks/distribution_staging/1000G \
+    /ngc/projects2/gm/people/mauqua/haploblocks/graph_output_batch8 \
+    /ngc/projects2/gm/people/mauqua/haploblocks/graph_output_full/by_chromosome
+echo "Done"
+date

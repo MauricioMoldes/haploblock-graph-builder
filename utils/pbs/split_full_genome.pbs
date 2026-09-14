@@ -1,0 +1,17 @@
+#!/bin/bash
+#PBS -N split_full_genome
+#PBS -l select=1:ncpus=4:mem=32gb
+#PBS -l walltime=12:00:00
+#PBS -o logs/split_full_genome.out
+#PBS -e logs/split_full_genome.err
+#PBS -j oe
+#PBS -W group_list=external-rh_rh_gm
+cd /ngc/projects2/gm/people/mauqua/haploblocks
+echo "Starting split of 16-chromosome full-genome run"
+date
+bash split_and_summarize_batch8.sh \
+    /ngc/projects2/gm/people/mauqua/haploblocks/graph_output_full/by_chromosome \
+    /ngc/projects2/gm/people/mauqua/haploblocks/graph_output_full/nodes.csv \
+    /ngc/projects2/gm/people/mauqua/haploblocks/graph_output_full/edges.csv
+echo "Done"
+date

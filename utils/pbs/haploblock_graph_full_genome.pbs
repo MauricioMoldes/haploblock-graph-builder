@@ -1,0 +1,27 @@
+#!/bin/bash
+#PBS -N haploblock_graph_full
+#PBS -l select=1:ncpus=192:mem=2000gb
+#PBS -l walltime=120:00:00
+#PBS -o logs/haploblock_graph_full.out
+#PBS -e logs/haploblock_graph_full.err
+#PBS -j oe
+#PBS -W group_list=external-rh_rh_gm
+cd /ngc/projects2/gm/people/mauqua/haploblocks
+export NPROC=$PBS_NCPUS
+export TMPDIR=/tmp
+export APPTAINER_TMPDIR=/tmp
+export OUTPUT_DIR=/output
+export CHR_FILTER=chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr14,chr15,chrX,chrY
+export MIN_CLUSTER_SUPPORT=25
+export RESUME_FROM_CHECKPOINT=1
+export EDGE_CHUNK_SIZE=1
+echo "Starting remaining-16-chromosome run (chr13,16-22 already done in batch8)"
+date
+apptainer exec \
+-B /ngc/projects2/gm/people/mauqua/haploblocks/tmp_full:/tmp \
+-B /ngc/projects2/gm/people/mauqua/haploblocks/results:/data \
+-B /ngc/projects2/gm/people/mauqua/haploblocks/graph_output_full:/output \
+./haploblock_graph.sif \
+python /app/haploblocks_to_graph.py
+echo "Job finished"
+date
